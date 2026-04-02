@@ -2,17 +2,42 @@ import numpy as np
 import torch
 import smplx
 import os
+import warnings
 from measure import MeasureBody
 from measurement_definitions import STANDARD_LABELS
 from scipy.optimize import minimize
 import argparse
 
 
+def get_device():
+    if torch.cuda.is_available():
+        try:
+            test_tensor = torch.zeros(1).cuda()
+            del test_tensor
+            return torch.device('cuda')
+        except Exception as e:
+            warnings.warn(f"CUDA可用但初始化失败: {e}")
+            warnings.warn("将使用CPU运行")
+            return torch.device('cpu')
+    else:
+        return torch.device('cpu')
+
+
 class SMPLFitterFromData:
-    def __init__(self, model_path="data", model_type="smpl", gender="neutral"):
+    def __init__(self, model_path="data", model_type="smpl", gender="neutral", device=None):
         self.model_type = model_type
         self.model_path = model_path
         self.gender = gender
+        
+        if device is None:
+            self.device = get_device()
+        else:
+            self.device = device
+        
+        if self.device.type == 'cuda':
+            print(f"使用设备: CUDA (GPU)")
+        else:
+            print(f"使用设备: CPU")
         
         self.model = smplx.create(
             model_path=model_path,
@@ -21,7 +46,7 @@ class SMPLFitterFromData:
             num_betas=10,
             use_face_contour=False,
             ext='pkl'
-        )
+        ).to(self.device)
         
         self.measurer = MeasureBody(model_type=model_type)
         
@@ -91,6 +116,9 @@ class SMPLFitterFromData:
         betas = betas.unsqueeze(0) if betas.dim() == 1 else betas
         pose = pose.unsqueeze(0) if pose.dim() == 1 else pose
         
+        betas = betas.to(self.device)
+        pose = pose.to(self.device)
+        
         with torch.no_grad():
             output = self.model(
                 betas=betas,
@@ -127,19 +155,19 @@ class SMPLFitterFromData:
         target_keypoints_m = target_keypoints / 1000.0
         
         if initial_betas is None:
-            betas = torch.zeros(10, dtype=torch.float32, requires_grad=True)
+            betas = torch.zeros(10, dtype=torch.float32, requires_grad=True, device=self.device)
         else:
-            betas = torch.tensor(initial_betas, dtype=torch.float32, requires_grad=True)
+            betas = torch.tensor(initial_betas, dtype=torch.float32, requires_grad=True, device=self.device)
         
         if initial_pose is None:
-            pose = torch.zeros(72, dtype=torch.float32, requires_grad=True)
+            pose = torch.zeros(72, dtype=torch.float32, requires_grad=True, device=self.device)
         else:
-            pose = torch.tensor(initial_pose, dtype=torch.float32, requires_grad=True)
+            pose = torch.tensor(initial_pose, dtype=torch.float32, requires_grad=True, device=self.device)
         
         optimizer = torch.optim.Adam([betas, pose], lr=0.01)
         
-        target_torch = torch.tensor(target_keypoints_m, dtype=torch.float32)
-        weights_torch = torch.tensor(weights, dtype=torch.float32)
+        target_torch = torch.tensor(target_keypoints_m, dtype=torch.float32, device=self.device)
+        weights_torch = torch.tensor(weights, dtype=torch.float32, device=self.device)
         
         best_loss = float('inf')
         best_betas = betas.detach().clone()
@@ -188,17 +216,17 @@ class SMPLFitterFromData:
             sampled_points = pointcloud
         
         target_points_m = sampled_points / 1000.0
-        target_torch = torch.tensor(target_points_m, dtype=torch.float32)
+        target_torch = torch.tensor(target_points_m, dtype=torch.float32, device=self.device)
         
         if initial_betas is None:
-            betas = torch.zeros(10, dtype=torch.float32, requires_grad=True)
+            betas = torch.zeros(10, dtype=torch.float32, requires_grad=True, device=self.device)
         else:
-            betas = torch.tensor(initial_betas, dtype=torch.float32, requires_grad=True)
+            betas = torch.tensor(initial_betas, dtype=torch.float32, requires_grad=True, device=self.device)
         
         if initial_pose is None:
-            pose = torch.zeros(72, dtype=torch.float32, requires_grad=True)
+            pose = torch.zeros(72, dtype=torch.float32, requires_grad=True, device=self.device)
         else:
-            pose = torch.tensor(initial_pose, dtype=torch.float32, requires_grad=True)
+            pose = torch.tensor(initial_pose, dtype=torch.float32, requires_grad=True, device=self.device)
         
         optimizer = torch.optim.Adam([betas, pose], lr=0.005)
         
@@ -210,7 +238,7 @@ class SMPLFitterFromData:
             optimizer.zero_grad()
             
             vertices, joints = self.get_smpl_joints(betas, pose)
-            vertices_torch = torch.tensor(vertices, dtype=torch.float32)
+            vertices_torch = torch.tensor(vertices, dtype=torch.float32, device=self.device)
             
             distances = torch.cdist(target_torch, vertices_torch)
             min_distances, _ = torch.min(distances, dim=1)
@@ -312,8 +340,18 @@ def main():
                         help='点云拟合迭代次数')
     parser.add_argument('--visualize', action='store_true',
                         help='是否可视化结果')
+    parser.add_argument('--device', type=str, default='auto',
+                        choices=['auto', 'cpu', 'cuda'],
+                        help='计算设备 (auto=自动选择, cpu=强制CPU, cuda=强制GPU)')
     
     args = parser.parse_args()
+    
+    if args.device == 'auto':
+        device = None
+    elif args.device == 'cpu':
+        device = torch.device('cpu')
+    elif args.device == 'cuda':
+        device = torch.device('cuda')
     
     print("=" * 60)
     print("SMPL 身体模型拟合与测量")
@@ -327,7 +365,8 @@ def main():
     fitter = SMPLFitterFromData(
         model_path=args.model_path,
         model_type=args.model_type,
-        gender=args.gender
+        gender=args.gender,
+        device=device
     )
     
     keypoints_3d, keypoints_valid, pointcloud = fitter.load_data(args.input)

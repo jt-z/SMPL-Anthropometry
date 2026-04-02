@@ -167,11 +167,13 @@ class Visualizer():
 
         landmark_colors = dict(zip(self.landmarks.keys(),
                                 px.colors.qualitative.Alphabet))
+        
+        default_color = 'red'
 
         for lm_name in landmark_names:
             if lm_name not in self.landmarks.keys():
                 print(f"Landmark {lm_name} is not defined.")
-                pass
+                continue
 
             lm_index = self.landmarks[lm_name]
             if isinstance(lm_index,tuple):
@@ -184,7 +186,7 @@ class Visualizer():
                                 z = [lm[2]], 
                                 mode='markers',
                                 marker=dict(size=8,
-                                            color=landmark_colors[lm_name],
+                                            color=landmark_colors.get(lm_name, default_color),
                                             opacity=1,
                                             ),
                                name=lm_name
