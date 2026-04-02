@@ -192,8 +192,6 @@ def measure_from_betas(betas, gender, model_root, measurement_names=None):
         measurement_names = measurer.all_possible_measurements
 
     measurer.measure(measurement_names)
-    # label_measurements 需要 {label: name} dict，用名字本身作 label
-    measurer.label_measurements({n: n for n in measurement_names})
 
     return measurer
 
@@ -238,7 +236,6 @@ def main():
     print("\n开始体型测量...")
     try:
         measurer = measure_from_betas(betas, args.gender, args.model_root)
-        measurer.label_measurements(measurer.all_possible_measurements)
 
         print("\n测量结果 (cm):")
         print("-" * 40)
