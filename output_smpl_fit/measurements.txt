@@ -1,0 +1,49 @@
+SMPL 身体测量结果
+============================================================
+
+SMPL 参数:
+  betas: [0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]
+  pose (前6个值): [0. 0. 0. 0. 0. 0.]
+
+测量结果 (标准标签):
+------------------------------------------------------------
+A  :    55.08 cm
+B  :    36.31 cm
+C  :    63.95 cm
+D  :   100.91 cm
+E  :    89.48 cm
+F  :   102.17 cm
+G  :    17.31 cm
+H  :    29.19 cm
+I  :    25.67 cm
+J  :    52.01 cm
+K  :    72.59 cm
+L  :    49.18 cm
+M  :    36.17 cm
+N  :    23.50 cm
+O  :    34.84 cm
+P  :   170.76 cm
+
+测量结果 (详细名称):
+------------------------------------------------------------
+height                        :   170.76 cm
+shoulder to crotch height     :    63.95 cm
+arm left length               :    50.74 cm
+arm right length              :    52.01 cm
+inside leg height             :    72.59 cm
+shoulder breadth              :    34.84 cm
+arm length (shoulder to elbow):    27.16 cm
+crotch height                 :    79.60 cm
+Hip circumference max height  :    86.89 cm
+arm length (spine to wrist)   :    16.43 cm
+head circumference            :    55.08 cm
+neck circumference            :    36.31 cm
+chest circumference           :   100.91 cm
+waist circumference           :    89.48 cm
+hip circumference             :   102.17 cm
+wrist right circumference     :    17.31 cm
+bicep right circumference     :    29.19 cm
+forearm right circumference   :    25.67 cm
+thigh left circumference      :    49.18 cm
+calf left circumference       :    36.17 cm
+ankle left circumference      :    23.50 cm
