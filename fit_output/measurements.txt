@@ -1,0 +1,25 @@
+性别: MALE
+betas: [-0.144  0.035  0.043  0.025 -0.031 -0.002  0.009 -0.01  -0.018  0.005]
+
+测量结果 (cm):
+  Hip circumference max height: 86.2
+  ankle left circumference: 23.3
+  arm left length: 50.2
+  arm length (shoulder to elbow): 26.9
+  arm length (spine to wrist): 16.3
+  arm right length: 51.5
+  bicep right circumference: 28.9
+  calf left circumference: 35.9
+  chest circumference: 99.8
+  crotch height: 79.0
+  forearm right circumference: 25.4
+  head circumference: 54.8
+  height: 169.4
+  hip circumference: 101.6
+  inside leg height: 72.0
+  neck circumference: 35.8
+  shoulder breadth: 34.5
+  shoulder to crotch height: 63.4
+  thigh left circumference: 48.9
+  waist circumference: 88.1
+  wrist right circumference: 17.1
