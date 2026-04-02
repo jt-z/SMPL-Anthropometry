@@ -1,5 +1,7 @@
 # SMPL 模型下载指南
 
+这个网址，别人分享的： https://huggingface.co/spaces/brjathu/HMR2.0/tree/23bd1ec40747c036eb4528450ed189fa1130fe73/data/smpl
+
 ## 问题说明
 
 运行代码时出现错误：
