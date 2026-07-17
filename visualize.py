@@ -309,10 +309,11 @@ class Visualizer():
                             name=m_viz_name
                                 )
 
-    def visualize(self, 
-                  measurement_names: List[str] = [], 
+    def visualize(self,
+                  measurement_names: List[str] = [],
                   landmark_names: List[str] = [],
-                  title="Measurement visualization"
+                  title="Measurement visualization",
+                  save_html: str = None
                   ):
         '''
         Visualize the body model with measurements, landmarks and joints.
@@ -369,10 +370,13 @@ class Visualizer():
                 
 
         fig.update_layout(scene_aspectmode='data',
-                            width=1000, height=700,
+                            width=1200, height=800,
                             title=title,
                             )
-            
+
+        if save_html:
+            fig.write_html(save_html)
+            print(f"3D 模型已保存: {save_html}")
         fig.show()
 
 

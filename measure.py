@@ -253,13 +253,14 @@ class Measurer():
             self.labels2names[set_label] = set_name
 
     def visualize(self,
-                 measurement_names: List[str] = [], 
+                 measurement_names: List[str] = [],
                  landmark_names: List[str] = [],
                  title="Measurement visualization",
                  visualize_body: bool = True,
                  visualize_landmarks: bool = True,
                  visualize_joints: bool = True,
-                 visualize_measurements: bool=True):
+                 visualize_measurements: bool = True,
+                 save_html: str = None):
 
         # TODO: create default model if not defined
         # if self.verts is None:
@@ -301,7 +302,8 @@ class Measurer():
         
         vizz.visualize(measurement_names=measurement_names,
                        landmark_names=landmark_names,
-                       title=title)
+                       title=title,
+                       save_html=save_html)
 
 
 class MeasureSMPL(Measurer):
