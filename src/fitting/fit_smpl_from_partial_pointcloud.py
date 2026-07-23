@@ -258,7 +258,7 @@ class PartialPointCloudSMPLFitter:
         
         betas_torch = torch.tensor(betas, dtype=torch.float32).unsqueeze(0)
         
-        measurer = MeasureBody()
+        measurer = MeasureBody(model_type='smpl')
         measurer.from_body_model(gender=self.gender.upper(), shape=betas_torch)
         
         measurement_names = measurer.all_possible_measurements
