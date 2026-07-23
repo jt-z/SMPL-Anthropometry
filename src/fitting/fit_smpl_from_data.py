@@ -412,12 +412,21 @@ def main():
     )
     
     keypoints_3d, keypoints_valid, pointcloud = fitter.load_data(args.input)
-    
-    betas_kp, pose_kp = fitter.fit_to_keypoints(
-        keypoints_3d, keypoints_valid,
-        num_iterations=args.keypoint_iterations
-    )
-    
+
+    # 根据数据类型选择拟合方式
+    if keypoints_3d is not None and keypoints_valid is not None:
+        # NPZ格式：有关键点数据，进行关键点拟合
+        print("\n开始SMPL关键点拟合...")
+        betas_kp, pose_kp = fitter.fit_to_keypoints(
+            keypoints_3d, keypoints_valid,
+            num_iterations=args.keypoint_iterations
+        )
+    else:
+        # PLY/OBJ格式：只有点云数据，跳过关键点拟合
+        print("\n检测到点云数据（无关键点），跳过关键点拟合步骤...")
+        betas_kp, pose_kp = None, None
+
+    print("\n开始SMPL点云拟合...")
     betas_final, pose_final = fitter.fit_to_pointcloud(
         pointcloud,
         initial_betas=betas_kp,
