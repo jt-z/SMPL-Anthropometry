@@ -6,217 +6,283 @@ Measure the SMPL/SMPLX body models and visualize the measurements and landmarks.
   <img src="https://github.com/DavidBoja/SMPL-Anthropometry/blob/master/assets/measurement_visualization.png" width="950">
 </p>
 
+## 📋 项目结构
+
+```
+SMPL-Anthropometry/
+├── src/                   # 源代码
+│   ├── core/             # 核心测量模块
+│   ├── fitting/          # SMPL拟合模块
+│   └── visualization/    # 可视化模块
+├── tools/                # 实用工具
+├── examples/             # 示例代码
+├── docs/                 # 文档
+├── data/                 # SMPL模型数据
+└── outputs/              # 运行输出
+```
+
+详细说明请查看 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
+
 <br>
 
-## 🔨 Getting started
-You can use a docker container to facilitate running the code. Run in terminal:
+## 🔨 快速开始
+
+### 1. 安装依赖
+
+使用 Docker（推荐）:
+```bash
+cd docker
+sh build.sh
+sh docker_run.sh /path/to/SMPL-Anthropometry
+```
+
+或手动安装:
+```bash
+pip install -r requirements.txt
+```
+
+详细安装说明：[docs/INSTALL.md](docs/INSTALL.md)
+
+### 2. 下载SMPL模型
+
+下载 SMPL/SMPLX 模型文件并放置到相应目录：
+- `data/smpl/` - 放置 `SMPL_{GENDER}.pkl` 文件
+- `data/smplx/` - 放置 `SMPLX_{GENDER}.pkl` 文件
+
+详见：[docs/DOWNLOAD_SMPL.md](docs/DOWNLOAD_SMPL.md)
+
+### 3. 运行示例
+
+测量默认SMPL模型:
+```bash
+python -m src.core.measure --measure_neutral_smpl_with_mean_shape
+```
+
+从TXT文件拟合SMPL（推荐使用修复版）:
+```bash
+python -m src.fitting.fit_smpl_from_txt_fixed \
+    --input your_data.txt \
+    --output outputs/my_result \
+    --visualize
+```
+
+查看3D结果:
+```bash
+python -m src.visualization.view_smpl_3d \
+    --params outputs/my_result/smpl_params.npz \
+    --save_html outputs/body_3d.html
+```
+
+<br>
+
+## 🏃 使用方法
+
+### 基本测量
+
+```python
+from src.core.measure import MeasureBody
+from src.core.measurement_definitions import STANDARD_LABELS
+
+# 创建测量器
+measurer = MeasureBody(model_type='smpl')
+
+# 方法1: 从shape参数创建
+measurer.from_body_model(gender='NEUTRAL', shape=betas)
+
+# 方法2: 从顶点创建
+measurer.from_verts(verts=vertices)
+
+# 执行测量
+measurement_names = measurer.all_possible_measurements
+measurer.measure(measurement_names)
+measurer.label_measurements(STANDARD_LABELS)
+
+# 获取结果
+measurements = measurer.measurements
+labeled = measurer.labeled_measurements
+
+# 可视化
+measurer.visualize(measurement_names=measurement_names)
+```
+
+### 标准测量项目
+
+```python
+STANDARD_MEASUREMENTS = {
+    'A': 'head circumference',      # 头围
+    'B': 'neck circumference',      # 颈围
+    'C': 'shoulder to crotch height', # 肩到裆高
+    'D': 'chest circumference',     # 胸围
+    'E': 'waist circumference',     # 腰围
+    'F': 'hip circumference',       # 臀围
+    'G': 'wrist right circumference', # 右腕围
+    'H': 'bicep right circumference', # 右臂围
+    'I': 'forearm right circumference', # 右前臂围
+    'J': 'arm right length',        # 右臂长
+    'K': 'inside leg height',       # 腿内侧高
+    'L': 'thigh left circumference', # 左大腿围
+    'M': 'calf left circumference', # 左小腿围
+    'N': 'ankle left circumference', # 左脚踝围
+    'O': 'shoulder breadth',        # 肩宽
+    'P': 'height'                   # 身高
+}
+```
+
+所有测量单位为 **厘米(cm)**。
+
+<br>
+
+## 🎯 主要功能
+
+### 1. 从TXT测量文件拟合SMPL（推荐）
+
+```bash
+python -m src.fitting.fit_smpl_from_txt_fixed \
+    --input frame_1860_yolo_measure_results.txt \
+    --output outputs/result \
+    --keypoint_iterations 500 \
+    --visualize
+```
+
+**特点：**
+- ✅ 修复单位转换问题（mm → m）
+- ✅ 修复坐标系对齐（YOLO Y轴向下 → SMPL Y轴向上）
+- ✅ Procrustes初始对齐
+- ✅ 改进的优化器和损失函数
+
+详见：[docs/TXT_FITTING_GUIDE.md](docs/TXT_FITTING_GUIDE.md)
+
+### 2. 从点云数据拟合
+
+```python
+from src.fitting.fit_smpl_from_data import SMPLFitterFromData
+
+fitter = SMPLFitterFromData(model_path='data', model_type='smpl')
+fitter.fit(pointcloud, num_iterations=1000)
+measurements = fitter.measure_body()
+```
+
+### 3. 3D可视化查看
+
+```bash
+python -m src.visualization.view_smpl_3d \
+    --betas outputs/result/betas.npy \
+    --save_html outputs/body_3d.html
+```
+
+在浏览器中交互式查看3D人体模型和测量结果。
+
+<br>
+
+## 🛠️ 工具脚本
+
+| 工具 | 功能 | 使用 |
+|------|------|------|
+| `tools/check_models.py` | 检查SMPL模型文件 | `python tools/check_models.py` |
+| `tools/diagnose_keypoints.py` | 诊断关键点差异 | `python tools/diagnose_keypoints.py` |
+| `tools/evaluate.py` | 评估测量误差 | `python tools/evaluate.py` |
+
+<br>
+
+## 📊 评估测量误差
+
+```python
+from tools.evaluate import evaluate_mae
+
+MAE = evaluate_mae(measurer1.measurements, measurer2.measurements)
+print(f"Mean Absolute Error: {MAE:.2f} cm")
+```
+
+<br>
+
+## 📝 文档
+
+- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) - 项目结构详细说明
+- [docs/INSTALL.md](docs/INSTALL.md) - 安装指南
+- [docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md) - 使用指南
+- [docs/TXT_FITTING_GUIDE.md](docs/TXT_FITTING_GUIDE.md) - TXT拟合详细指南
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) - 更新日志
+- [docs/view_smpl_3d.md](docs/view_smpl_3d.md) - 3D查看工具文档
+
+<br>
+
+## 🎨 可视化
+
+### 面部分割可视化
+```bash
+python -m src.visualization.visualize --visualize_smpl_and_smplx_face_segmentation
+```
+
+### 关节可视化
+```bash
+python -m src.visualization.visualize --visualize_smpl_and_smplx_joints
+```
+
+### 地标点可视化
+```bash
+python -m src.visualization.visualize --visualize_smpl_and_smplx_landmarks
+```
+
+<br>
+
+## 📐 测量定义
+
+### 长度测量
+通过两个地标点之间的距离定义
+
+### 围度测量
+通过平面切割人体模型获得的周长
+
+详见：`src/core/measurement_definitions.py`
+
+<br>
+
+## 🔧 自定义测量
+
+添加新的测量定义：
+
+1. 打开 `src/core/measurement_definitions.py`
+2. 在 `MEASUREMENT_TYPES` 中添加测量类型
+3. 在 `LENGTHS` 或 `CIRCUMFERENCES` 字典中定义测量
+4. 如果是围度测量，在 `CIRCUMFERENCE_TO_BODYPARTS` 中指定身体部位
+
+<br>
+
+## 🚀 高级功能
+
+### 身高标准化
+
+```python
+measurer.measure(all_measurement_names)
+new_height = 175  # cm
+measurer.height_normalize_measurements(new_height)
+normalized = measurer.height_normalized_measurements
+```
+
+### 姿态模型测量
+
+对于姿态模型的测量，请参考：[pose-independent-anthropometry](https://github.com/DavidBoja/pose-independent-anthropometry/)
+
+<br>
+
+## 🐳 Docker使用
 
 ```bash
 cd docker
 sh build.sh
-sh docker_run.sh CODE_PATH
+sh docker_run.sh /path/to/SMPL-Anthropometry
 ```
 
-by adjusting the `CODE_PATH` to the `SMPL-Anthropometry` directory location. This creates a `smpl-anthropometry-container` container.
-
-If you do not want to use a docker container, you can also just install the necessary packages from `docker/requirements.txt` into your own enviroment.
-
-Next, provide the body models (SMPL or SMPLX) and:
-1. put the `SMPL_{GENDER}.pkl` (MALE, FEMALE and NEUTRAL) models into the `data/smpl` folder
-2. put the `SMPLX_{GENDER}.pkl` (MALE, FEMALE and NEUTRAL) models into the `data/smplx` folder
-
-All the models can be found [here](https://github.com/vchoutas/smplx#downloading-the-model).
-
-<br>
-
-## 🏃 Running
-
-First import the necessary libraries:
-
-```python
-from measure import MeasureBody
-from measurement_definitions import STANDARD_LABELS
-```
-<br>
-
-Next define the measurer by setting the body model you want to measure with `model_type` (`smpl` or `smplx`):
-```python
-measurer = MeasureBody(model_type)
-```
-<br>
-
-Then, there are two ways of using the code for measuring a body model depending on how you want to define the body:
-
-1. Define the body model using the shape `betas` and gender `gender` parameters:
-
-```python
-measurer.from_body_model(gender=gender, shape=betas) 
-```
-
-2. Define the body model using the N x 3 vertices `verts` (N=6890 if SMPL, and 10475 if SMPLX):
-
-```python
-measurer.from_verts(verts=verts) 
-```
-&nbsp;&nbsp;&nbsp;&nbsp; 📣 Defining the body using the vertices can be especially useful when the SMPL/SMPLX vertices have been <br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; further refined to fit a 2D/3D model and do not satsify perfectly a set of shape parameters anymore.<br>
-<br>
-
-Finally, you can measure the body with:
-```python
-
-measurement_names = measurer.all_possible_measurements # or chose subset of measurements 
-measurer.measure(measurement_names) 
-measurer.label_measurements(STANDARD_LABELS) 
-```
-
-Then, the measurements dictionary can be obtained with `measurer.measurements` and the labeled measurements can be obtained with `measurer.labeled_measurements`. The list of the predefined measurements along with its standard literature labels are:
-
-```
-STANDARD_MEASUREMENT = {
-    'A': 'head circumference',
-    'B': 'neck circumference',
-    'C': 'shoulder to crotch height',
-    'D': 'chest circumference',
-    'E': 'waist circumference',
-    'F': 'hip circumference',
-    'G': 'wrist right circumference',
-    'H': 'bicep right circumference',
-    'I': 'forearm right circumference',
-    'J': 'arm right length',
-    'K': 'inside leg height',
-    'L': 'thigh left circumference',
-    'M': 'calf left circumference',
-    'N': 'ankle left circumference',
-    'O': 'shoulder breadth',
-    'P': 'height'
-    }
-```
-
-All the measurements are expressed in cm.
-
-<br>
-
-You can also compute the mean absolute error (MAE) between two sets of measurements as:
-```python
-from evaluate import evaluate_mae
-MAE = evaluate_mae(measurer1.measurements,measurer2.measurements)
-```
-
-where `measurer1` and `measurer2` are two intances of the `MeasureBody` class.
-
-<br>
-
-## 💿 Demos
-
-You can run the `measure.py` script to measure all the predefined measurements (mentioned above) and visualize the results for a zero-shaped T-posed neutral gender SMPL body model:
-
+容器内运行：
 ```bash
-python measure.py --measure_neutral_smpl_with_mean_shape
-```
-
-The output consists of a dictionary of measurements expressed in cm, the labeled measurements using standard labels,and the viualization of the measurements in the browser, as in the Figure above.
-
-Similarly, you can measure a zero-shaped T-posed neutral gender SMPLX body model with:
-```bash
-python measure.py --measure_neutral_smplx_with_mean_shape
+python -m src.core.measure --measure_neutral_smpl_with_mean_shape
 ```
 
 <br>
 
-You can run the `evaluate.py` script to compare two sets of measurements of randomly shaped SMPL bodies as:
+## 🗞️ 引用
 
-```python
-python evaluate.py
-```
-The output consists of the mean absolute error (MAE) between two sets of measurements.
-
-<br>
-<br>
-
-## 📝 Notes
-
-### Measurement definitions
-There are two types of measurements: lenghts and circumferences.
-1. Lengths are defined as distances between landmark points defined on the body model
-2. Circumferences are defiend as plane cuts of the body model
-
-To define a new measurement:
-1. Open `measurement_definitions.py`
-1. add the new measurement to the `MEASUREMENT_TYPES` dict and set its type:
-   `LENGTH` or `CIRCUMFERENCE`
-2. depending on the measurement type, define the measurement in the `LENGTHS` or 
-   `CIRCUMFERENCES` dict of the appropriate body model (`SMPLMeasurementDefinitions` or `SMPLXMeasurementDefinitions`)
-   - `LENGTHS` are defined using 2 landmarks - the measurement is 
-            found as the distance between the landmarks
-   - `CIRCUMFERENCES` are defined with landmarks and joints - the 
-            measurement is found by cutting the body model with the 
-            plane defined by a point (landmark point) and normal (
-            vector connecting the two joints)
-3. If the measurement is a `CIRCUMFERENCE`, a possible issue that arises is
-   that the plane cutting results in multiple body part slices. To alleviate
-   that, define the body part where the measurement should be located in 
-   `CIRCUMFERENCE_TO_BODYPARTS` dict. This way, only the slice in the corresponding body part is
-   used for finding the measurement. The body parts are defined by the 
-   face segmentation located in `data/smpl_body_parts_2_faces.json` or `data/smplx_body_parts_2_faces.json`.
-
-<br>
-
-### Measurement normalization
-If a body model has unknown scale (ex. the body was regressed from an image), the measurements can be height-normalized as so:
-
-```python
-measurer = MeasureBody(model_type) # assume given model type
-measurer.from_body_model(shape=betas, gender=gender) # assume given betas and gender
-
-all_measurement_names = measurer.possible_measurements
-measurer.measure(all_measurement_names)
-new_height = 175
-measurer.height_normalize_measurements(new_height)
-```
-
-This creates a dict of measurements `measurer.height_normalized_measurements` where each measurement was normalized with:
-```
-new_measurement = (old_measurement / old_height) * new_height
-```
-<br>
-
-### Additional visualizations
-To visualize the SMPL and SMPLX face segmentation on two separate plots, run:
-```bash
-python visualize.py --visualize_smpl_and_smplx_face_segmentation
-```
-
-To visualize the SMPL and SMPLX joints on the same plot, run:
-```bash
-python visualize.py --visualize_smpl_and_smplx_joints
-```
-
-To visualize the SMPL and SMPLX point segmentations on two side-by-side plots, run:
-```bash
-python visualize.py --visualize_smpl_and_smplx_point_segmentation
-```
-NOTE: You need to provide the `point_segmentation_meshcapade.json` files in the folders `data/smpl` and `data/smplx` from [here](https://meshcapade.wiki/SMPL#body-part-segmentation).
-
-To visualize the SMPL and SMPLX landmarks on two side-by-side plots, run:
-```bash
-python visualize.py --visualize_smpl_and_smplx_landmarks
-```
-
-<br>
-<br>
-
-## 🤸‍♂️ Measuring posed subjects
-
-This repository is meant to measure the SMPL family of models in the neutral T-pose. If you wish to measure a posed SMPL or scan of a subject, please refer to our [pose-independent anthropometry](https://github.com/DavidBoja/pose-independent-anthropometry/) repository.
-
-
-<br>
-<br>
-
-## 🗞️ Citation
-
-Please cite our work and leave a star ⭐ if you find the repository useful.
+如果这个项目对您有帮助，请引用并给个星标 ⭐
 
 ```bibtex
 @misc{SMPL-Anthropometry,
@@ -230,16 +296,32 @@ Please cite our work and leave a star ⭐ if you find the repository useful.
 ```
 
 <br>
+
+## 📄 许可证
+
+MIT License - 详见 [LICENSE](LICENSE)
+
+<br>
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
 <br>
 
 ## TODO
 
-- [X] Implement SMPL-X body model
-- [ ] Implement STAR body model
-- [ ] Implement SUPR body model
-- [X] Add height normalization for the measurements
-- [ ] Allow posed and shaped body models as inputs, and measure them after unposing
+- [X] 实现 SMPL-X 模型支持
+- [X] 添加身高标准化功能
+- [X] 从TXT文件拟合SMPL
+- [X] 3D浏览器查看工具
+- [X] 项目结构重组
+- [ ] 实现 STAR 模型支持
+- [ ] 实现 SUPR 模型支持
+- [ ] 允许姿态模型输入并自动取消姿态后测量
+- [ ] 添加批量处理脚本
+- [ ] 性能优化（GPU加速）
 
 <br>
 
-⭐ <b>Leave a star if you find this repository useful</b> ⭐
+⭐ **如果觉得有用，请给个星标！** ⭐
