@@ -93,18 +93,60 @@ class SMPLFitterFromData:
             23: 'right_hand',
         }
     
-    def load_data(self, npz_path):
-        data = np.load(npz_path)
-        
-        keypoints_3d = data['keypoints_3d']
-        keypoints_valid = data['keypoints_valid']
-        pointcloud = data['pointcloud']
-        
-        print(f"加载数据成功:")
-        print(f"  关键点: {keypoints_3d.shape}")
-        print(f"  有效关键点: {np.sum(keypoints_valid)}/{len(keypoints_valid)}")
-        print(f"  点云: {pointcloud.shape}")
-        
+    def load_data(self, input_path):
+        """加载数据，支持NPZ和PLY/OBJ格式"""
+        import os
+
+        # 获取文件扩展名
+        _, ext = os.path.splitext(input_path)
+        ext = ext.lower()
+
+        if ext == '.npz':
+            # 原有逻辑：加载NPZ格式（关键点数据）
+            print(f"检测到NPZ格式，加载关键点数据...")
+            data = np.load(input_path)
+
+            keypoints_3d = data['keypoints_3d']
+            keypoints_valid = data['keypoints_valid']
+            pointcloud = data['pointcloud']
+
+            print(f"加载数据成功:")
+            print(f"  关键点: {keypoints_3d.shape}")
+            print(f"  有效关键点: {np.sum(keypoints_valid)}/{len(keypoints_valid)}")
+            print(f"  点云: {pointcloud.shape}")
+
+        elif ext in ['.ply', '.obj']:
+            # 新逻辑：加载PLY/OBJ格式（点云/网格数据）
+            print(f"检测到{ext.upper()}格式，加载点云/网格数据...")
+
+            try:
+                import trimesh
+            except ImportError:
+                raise ImportError("需要安装trimesh库来读取PLY/OBJ文件: pip install trimesh")
+
+            # 加载网格
+            mesh = trimesh.load(input_path)
+
+            # 提取顶点作为点云
+            if hasattr(mesh, 'vertices'):
+                pointcloud = np.array(mesh.vertices)
+            else:
+                raise ValueError(f"无法从{input_path}提取顶点数据")
+
+            print(f"加载数据成功:")
+            print(f"  顶点数: {len(pointcloud)}")
+            print(f"  坐标范围:")
+            print(f"    X: [{pointcloud[:, 0].min():.3f}, {pointcloud[:, 0].max():.3f}]")
+            print(f"    Y: [{pointcloud[:, 1].min():.3f}, {pointcloud[:, 1].max():.3f}]")
+            print(f"    Z: [{pointcloud[:, 2].min():.3f}, {pointcloud[:, 2].max():.3f}]")
+
+            # 点云数据没有关键点信息
+            keypoints_3d = None
+            keypoints_valid = None
+
+        else:
+            raise ValueError(f"不支持的文件格式: {ext}。支持的格式: .npz, .ply, .obj")
+
         return keypoints_3d, keypoints_valid, pointcloud
     
     def get_smpl_joints(self, betas, pose):
