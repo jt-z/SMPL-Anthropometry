@@ -243,8 +243,8 @@ class SMPLFitterFromData:
                 print(f"  迭代 {iteration}: 损失 = {total_loss.item():.6f}")
         
         print(f"拟合完成，最佳损失: {best_loss:.6f}")
-        
-        return best_betas.numpy(), best_pose.numpy()
+
+        return best_betas.cpu().numpy(), best_pose.cpu().numpy()
     
     def fit_to_pointcloud(self, pointcloud, initial_betas=None, 
                           initial_pose=None, num_iterations=200, 
@@ -304,8 +304,8 @@ class SMPLFitterFromData:
                 print(f"  迭代 {iteration}: 损失 = {total_loss.item():.6f}")
         
         print(f"点云拟合完成，最佳损失: {best_loss:.6f}")
-        
-        return best_betas.numpy(), best_pose.numpy()
+
+        return best_betas.cpu().numpy(), best_pose.cpu().numpy()
     
     def measure_body(self, betas):
         print("\n开始身体测量...")
