@@ -246,66 +246,106 @@ class SMPLFitterFromData:
 
         return best_betas.cpu().numpy(), best_pose.cpu().numpy()
     
-    def fit_to_pointcloud(self, pointcloud, initial_betas=None, 
-                          initial_pose=None, num_iterations=200, 
-                          num_samples=2000):
+    def fit_to_pointcloud(self, pointcloud, initial_betas=None,
+                          initial_pose=None, num_iterations=200,
+                          num_samples=2000, freeze_pose=True):
         print("\n开始SMPL点云拟合...")
-        
+
+        if freeze_pose:
+            print("  姿态冻结模式：只优化body shape和位置，姿态保持标准站姿")
+
         if len(pointcloud) > num_samples:
             indices = np.random.choice(len(pointcloud), num_samples, replace=False)
             sampled_points = pointcloud[indices]
         else:
             sampled_points = pointcloud
-        
-        target_points_m = sampled_points / 1000.0
-        target_torch = torch.tensor(target_points_m, dtype=torch.float32, device=self.device)
-        
+
+        # 点云已经是米单位，不需要转换
+        target_torch = torch.tensor(sampled_points, dtype=torch.float32, device=self.device)
+
+        # 初始化平移参数到点云中心
+        pc_center = sampled_points.mean(axis=0)
+        transl = torch.tensor(pc_center, dtype=torch.float32, requires_grad=True, device=self.device)
+
+        print(f"  点云中心: {pc_center}")
+        print(f"  点云范围: X[{sampled_points[:, 0].min():.3f}, {sampled_points[:, 0].max():.3f}] "
+              f"Y[{sampled_points[:, 1].min():.3f}, {sampled_points[:, 1].max():.3f}] "
+              f"Z[{sampled_points[:, 2].min():.3f}, {sampled_points[:, 2].max():.3f}]")
+
         if initial_betas is None:
             betas = torch.zeros(10, dtype=torch.float32, requires_grad=True, device=self.device)
         else:
             betas = torch.tensor(initial_betas, dtype=torch.float32, requires_grad=True, device=self.device)
-        
+
         if initial_pose is None:
-            pose = torch.zeros(72, dtype=torch.float32, requires_grad=True, device=self.device)
+            # 自然站姿：手臂下垂
+            # SMPL pose参数：前3个是global_orient，后69个是body_pose（23个关节 x 3）
+            # 左肩关节(joint 16)对应body_pose[39:42]，右肩关节(joint 17)对应body_pose[42:45]
+            pose = torch.zeros(72, dtype=torch.float32, device=self.device)
+
+            # 让手臂下垂：肩关节绕Z轴旋转
+            # 左肩：向内旋转约45度
+            pose[41] = 0.7854  # 45度 = π/4 rad，绕Y轴
+            # 右肩：向内旋转约45度
+            pose[44] = -0.7854
+
+            pose.requires_grad = not freeze_pose
         else:
-            pose = torch.tensor(initial_pose, dtype=torch.float32, requires_grad=True, device=self.device)
-        
-        optimizer = torch.optim.Adam([betas, pose], lr=0.005)
-        
+            pose = torch.tensor(initial_pose, dtype=torch.float32, requires_grad=(not freeze_pose), device=self.device)
+
+        # 只优化betas和transl，pose固定为站姿
+        if freeze_pose:
+            optimizer = torch.optim.Adam([betas, transl], lr=0.01)
+        else:
+            optimizer = torch.optim.Adam([betas, pose, transl], lr=0.005)
+
         best_loss = float('inf')
         best_betas = betas.detach().clone()
         best_pose = pose.detach().clone()
-        
+        best_transl = transl.detach().clone()
+
         for iteration in range(num_iterations):
             optimizer.zero_grad()
-            
-            vertices, joints = self.get_smpl_joints(betas, pose)
-            vertices_torch = torch.tensor(vertices, dtype=torch.float32, device=self.device)
-            
+
+            # 直接用torch计算，保持梯度
+            betas_batch = betas.unsqueeze(0)
+            pose_batch = pose.unsqueeze(0)
+
+            output = self.model(
+                betas=betas_batch,
+                body_pose=pose_batch[:, 3:],
+                global_orient=pose_batch[:, :3],
+                return_verts=True
+            )
+
+            vertices_torch = output.vertices[0] + transl  # 加上平移
+
             distances = torch.cdist(target_torch, vertices_torch)
             min_distances, _ = torch.min(distances, dim=1)
-            
+
             pointcloud_loss = torch.mean(min_distances ** 2)
-            
+
             betas_reg = 0.001 * torch.sum(betas ** 2)
             pose_reg = 0.0001 * torch.sum(pose ** 2)
-            
+
             total_loss = pointcloud_loss + betas_reg + pose_reg
-            
+
             total_loss.backward()
             optimizer.step()
-            
+
             if total_loss.item() < best_loss:
                 best_loss = total_loss.item()
                 best_betas = betas.detach().clone()
                 best_pose = pose.detach().clone()
-            
-            if iteration % 50 == 0:
-                print(f"  迭代 {iteration}: 损失 = {total_loss.item():.6f}")
-        
-        print(f"点云拟合完成，最佳损失: {best_loss:.6f}")
+                best_transl = transl.detach().clone()
 
-        return best_betas.cpu().numpy(), best_pose.cpu().numpy()
+            if iteration % 50 == 0:
+                print(f"  迭代 {iteration}: 损失 = {total_loss.item():.6f}, 平移 = {transl.detach().cpu().numpy()}")
+
+        print(f"点云拟合完成，最佳损失: {best_loss:.6f}")
+        print(f"最终平移: {best_transl.cpu().numpy()}")
+
+        return best_betas.cpu().numpy(), best_pose.cpu().numpy(), best_transl.cpu().numpy()
     
     def measure_body(self, betas):
         print("\n开始身体测量...")
@@ -330,22 +370,31 @@ class SMPLFitterFromData:
         print("\n生成可视化...")
         self.measurer.visualize()
     
-    def save_results(self, output_dir, betas, pose, measurements, labeled_measurements):
+    def save_results(self, output_dir, betas, pose, measurements, labeled_measurements, transl=None):
         os.makedirs(output_dir, exist_ok=True)
-        
+
+        save_dict = {
+            'betas': betas,
+            'pose': pose
+        }
+        if transl is not None:
+            save_dict['transl'] = transl
+
         np.savez(
             os.path.join(output_dir, "smpl_params.npz"),
-            betas=betas,
-            pose=pose
+            **save_dict
         )
-        
+
         with open(os.path.join(output_dir, "measurements.txt"), 'w') as f:
             f.write("SMPL 身体测量结果\n")
             f.write("=" * 60 + "\n\n")
-            
+
             f.write("SMPL 参数:\n")
             f.write(f"  betas: {betas}\n")
-            f.write(f"  pose (前6个值): {pose[:6]}\n\n")
+            f.write(f"  pose (前6个值): {pose[:6]}\n")
+            if transl is not None:
+                f.write(f"  transl: {transl}\n")
+            f.write("\n")
             
             f.write("测量结果 (标准标签):\n")
             f.write("-" * 60 + "\n")
@@ -380,6 +429,10 @@ def main():
                         help='关键点拟合迭代次数')
     parser.add_argument('--pointcloud_iterations', type=int, default=200,
                         help='点云拟合迭代次数')
+    parser.add_argument('--freeze_pose', action='store_true', default=True,
+                        help='冻结姿态（只优化body shape），适用于不完整点云')
+    parser.add_argument('--optimize_pose', action='store_true',
+                        help='优化姿态（不推荐用于不完整点云）')
     parser.add_argument('--visualize', action='store_true',
                         help='是否可视化结果')
     parser.add_argument('--device', type=str, default='auto',
@@ -427,13 +480,15 @@ def main():
         betas_kp, pose_kp = None, None
 
     print("\n开始SMPL点云拟合...")
-    betas_final, pose_final = fitter.fit_to_pointcloud(
+    freeze_pose = not args.optimize_pose  # 默认冻结姿态
+    betas_final, pose_final, transl_final = fitter.fit_to_pointcloud(
         pointcloud,
         initial_betas=betas_kp,
         initial_pose=pose_kp,
-        num_iterations=args.pointcloud_iterations
+        num_iterations=args.pointcloud_iterations,
+        freeze_pose=freeze_pose
     )
-    
+
     measurements, labeled_measurements = fitter.measure_body(betas_final)
     
     print("\n" + "=" * 60)
@@ -451,8 +506,8 @@ def main():
         if name in measurements:
             print(f"{name:30s}: {measurements[name]:8.2f} cm")
     
-    fitter.save_results(args.output, betas_final, pose_final, 
-                       measurements, labeled_measurements)
+    fitter.save_results(args.output, betas_final, pose_final,
+                       measurements, labeled_measurements, transl_final)
     
     if args.visualize:
         fitter.visualize_results()
