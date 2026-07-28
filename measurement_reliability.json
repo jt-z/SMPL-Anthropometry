@@ -1,0 +1,28 @@
+{
+  "back_view_only": {
+    "description": "只有背面点云数据时的测量可靠性",
+    "high_reliability": [
+      "height",
+      "shoulder_breadth",
+      "back_length",
+      "hip_circumference",
+      "arm_length",
+      "leg_length"
+    ],
+    "medium_reliability": [
+      "chest_circumference",
+      "waist_circumference",
+      "neck_circumference"
+    ],
+    "low_reliability": [
+      "head_circumference"
+    ],
+    "estimated_error": {
+      "height": "±1cm",
+      "shoulder_breadth": "±1cm",
+      "chest_circumference": "±3cm",
+      "waist_circumference": "±3cm",
+      "hip_circumference": "±2cm"
+    }
+  }
+}

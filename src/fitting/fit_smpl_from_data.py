@@ -297,7 +297,8 @@ class SMPLFitterFromData:
             print("  姿态冻结模式：只优化body shape和位置，姿态保持标准站姿")
 
         # 两阶段拟合：先用躯干对齐，再用全部点云精细拟合
-        if two_stage:
+        # TODO: 两阶段拟合功能暂时禁用，等调试完成后启用
+        if two_stage and False:  # 临时禁用
             print(f"  使用两阶段拟合策略")
             print(f"  阶段1: 使用躯干中心部分（Y轴中间{torso_ratio*100:.0f}%）进行粗拟合")
 
@@ -348,6 +349,8 @@ class SMPLFitterFromData:
             )
         else:
             # 单阶段拟合
+            if two_stage:
+                print("  注意: 两阶段拟合功能暂时禁用，使用单阶段拟合")
             return self._fit_stage(
                 pointcloud, initial_betas, initial_pose,
                 num_iterations=num_iterations,
@@ -364,6 +367,7 @@ class SMPLFitterFromData:
                    betas_reg_weight=0.001, pose_reg_weight=0.0001,
                    bidirectional_weight=0.5, pose_type='natural',
                    initial_transl=None):
+        """单阶段拟合（内部方法）"""
 
         if len(pointcloud) > num_samples:
             indices = np.random.choice(len(pointcloud), num_samples, replace=False)
@@ -374,11 +378,15 @@ class SMPLFitterFromData:
         # 点云已经是米单位，不需要转换
         target_torch = torch.tensor(sampled_points, dtype=torch.float32, device=self.device)
 
-        # 初始化平移参数到点云中心
-        pc_center = sampled_points.mean(axis=0)
-        transl = torch.tensor(pc_center, dtype=torch.float32, requires_grad=True, device=self.device)
+        # 初始化平移参数
+        if initial_transl is not None:
+            transl = torch.tensor(initial_transl, dtype=torch.float32, requires_grad=True, device=self.device)
+            print(f"  使用提供的初始平移: {initial_transl}")
+        else:
+            pc_center = sampled_points.mean(axis=0)
+            transl = torch.tensor(pc_center, dtype=torch.float32, requires_grad=True, device=self.device)
+            print(f"  点云中心: {pc_center}")
 
-        print(f"  点云中心: {pc_center}")
         print(f"  点云范围: X[{sampled_points[:, 0].min():.3f}, {sampled_points[:, 0].max():.3f}] "
               f"Y[{sampled_points[:, 1].min():.3f}, {sampled_points[:, 1].max():.3f}] "
               f"Z[{sampled_points[:, 2].min():.3f}, {sampled_points[:, 2].max():.3f}]")
@@ -425,60 +433,85 @@ class SMPLFitterFromData:
         else:
             optimizer = torch.optim.Adam([betas, pose, transl], lr=0.005)
 
+        print(f"  开始优化循环，共 {num_iterations} 次迭代...")
+
         best_loss = float('inf')
         best_betas = betas.detach().clone()
         best_pose = pose.detach().clone()
         best_transl = transl.detach().clone()
 
-        for iteration in range(num_iterations):
-            optimizer.zero_grad()
+        try:
+            for iteration in range(num_iterations):
+                if iteration == 0:
+                    print(f"  第一次迭代开始...")
 
-            # 直接用torch计算，保持梯度
-            betas_batch = betas.unsqueeze(0)
-            pose_batch = pose.unsqueeze(0)
+                optimizer.zero_grad()
 
-            output = self.model(
-                betas=betas_batch,
-                body_pose=pose_batch[:, 3:],
-                global_orient=pose_batch[:, :3],
-                return_verts=True
-            )
+                # 直接用torch计算，保持梯度
+                betas_batch = betas.unsqueeze(0)
+                pose_batch = pose.unsqueeze(0)
 
-            vertices_torch = output.vertices[0] + transl  # 加上平移
+                if iteration == 0:
+                    print(f"  生成SMPL模型...")
 
-            # 点云到模型的距离（保证点云上的点都靠近模型）
-            distances_pc_to_model = torch.cdist(target_torch, vertices_torch)
-            min_distances_pc_to_model, _ = torch.min(distances_pc_to_model, dim=1)
-            pc_to_model_loss = torch.mean(min_distances_pc_to_model ** 2)
+                output = self.model(
+                    betas=betas_batch,
+                    body_pose=pose_batch[:, 3:],
+                    global_orient=pose_batch[:, :3],
+                    return_verts=True
+                )
 
-            # 模型到点云的距离（防止模型顶点飘离点云，尤其对不完整点云重要）
-            # 但权重要低一些，因为模型的正面没有对应的点云数据
-            distances_model_to_pc = torch.cdist(vertices_torch, target_torch)
-            min_distances_model_to_pc, _ = torch.min(distances_model_to_pc, dim=1)
-            model_to_pc_loss = torch.mean(min_distances_model_to_pc ** 2)
+                vertices_torch = output.vertices[0] + transl  # 加上平移
 
-            # 组合双向损失，点云→模型的权重更高
-            pointcloud_loss = pc_to_model_loss + bidirectional_weight * model_to_pc_loss
+                if iteration == 0:
+                    print(f"  计算点云到模型的距离 ({len(target_torch)} 点 -> {len(vertices_torch)} 顶点)...")
 
-            betas_reg = betas_reg_weight * torch.sum(betas ** 2)
-            pose_reg = pose_reg_weight * torch.sum(pose ** 2)
+                # 点云到模型的距离（保证点云上的点都靠近模型）
+                distances_pc_to_model = torch.cdist(target_torch, vertices_torch)
+                min_distances_pc_to_model, _ = torch.min(distances_pc_to_model, dim=1)
+                pc_to_model_loss = torch.mean(min_distances_pc_to_model ** 2)
 
-            total_loss = pointcloud_loss + betas_reg + pose_reg
+                if iteration == 0:
+                    print(f"  计算模型到点云的距离...")
 
-            total_loss.backward()
-            optimizer.step()
+                # 模型到点云的距离（防止模型顶点飘离点云，尤其对不完整点云重要）
+                # 但权重要低一些，因为模型的正面没有对应的点云数据
+                distances_model_to_pc = torch.cdist(vertices_torch, target_torch)
+                min_distances_model_to_pc, _ = torch.min(distances_model_to_pc, dim=1)
+                model_to_pc_loss = torch.mean(min_distances_model_to_pc ** 2)
 
-            if total_loss.item() < best_loss:
-                best_loss = total_loss.item()
-                best_betas = betas.detach().clone()
-                best_pose = pose.detach().clone()
-                best_transl = transl.detach().clone()
+                # 组合双向损失，点云→模型的权重更高
+                pointcloud_loss = pc_to_model_loss + bidirectional_weight * model_to_pc_loss
 
-            if iteration % 50 == 0:
-                print(f"  迭代 {iteration}: 损失 = {total_loss.item():.6f}, 平移 = {transl.detach().cpu().numpy()}")
+                betas_reg = betas_reg_weight * torch.sum(betas ** 2)
+                pose_reg = pose_reg_weight * torch.sum(pose ** 2)
+
+                total_loss = pointcloud_loss + betas_reg + pose_reg
+
+                if iteration == 0:
+                    print(f"  反向传播...")
+
+                total_loss.backward()
+                optimizer.step()
+
+                if total_loss.item() < best_loss:
+                    best_loss = total_loss.item()
+                    best_betas = betas.detach().clone()
+                    best_pose = pose.detach().clone()
+                    best_transl = transl.detach().clone()
+
+                if iteration % 50 == 0:
+                    print(f"  迭代 {iteration}: 损失 = {total_loss.item():.6f}, 平移 = {transl.detach().cpu().numpy()}")
+
+        except Exception as e:
+            print(f"  错误: 优化过程中出现异常: {e}")
+            import traceback
+            traceback.print_exc()
 
         print(f"点云拟合完成，最佳损失: {best_loss:.6f}")
         print(f"最终平移: {best_transl.cpu().numpy()}")
+
+        return best_betas.cpu().numpy(), best_pose.cpu().numpy(), best_transl.cpu().numpy()
 
         return best_betas.cpu().numpy(), best_pose.cpu().numpy(), best_transl.cpu().numpy()
     
@@ -751,6 +784,10 @@ def main():
                         help='姿态正则化权重 (默认0.0001)')
     parser.add_argument('--bidirectional_weight', type=float, default=0.5,
                         help='双向Chamfer距离中模型→点云的权重 (默认0.5，设为0则只用单向距离)')
+    parser.add_argument('--two_stage', action='store_true',
+                        help='使用两阶段拟合：先用躯干对齐，再用全部点云精细拟合（推荐用于不完整点云）')
+    parser.add_argument('--torso_ratio', type=float, default=0.4,
+                        help='两阶段拟合时躯干部分占Y轴的比例 (默认0.4，即中间40%)')
 
     args = parser.parse_args()
     
@@ -814,7 +851,9 @@ def main():
         betas_reg_weight=args.betas_reg,
         pose_reg_weight=args.pose_reg,
         bidirectional_weight=args.bidirectional_weight,
-        pose_type=args.pose_type
+        pose_type=args.pose_type,
+        two_stage=args.two_stage,
+        torso_ratio=args.torso_ratio
     )
 
     measurements, labeled_measurements = fitter.measure_body(betas_final)
